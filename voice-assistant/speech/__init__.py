@@ -169,13 +169,23 @@ class SpeechRecognizer:
             language=self.language,
             beam_size=5,
         )
+
+        try:
+            text_parts = [segment.text for segment in segments]
+        except Exception as exc:
+            logger.error(
+                "Transcription failed during segment iteration: %s",
+                exc,
+                exc_info=True,
+            )
+            return None
+
         logger.debug(
             "Detected language '%s' with probability %.2f",
             info.language,
             info.language_probability,
         )
 
-        text_parts = [segment.text for segment in segments]
         if not text_parts:
             logger.warning("No speech detected in audio.")
             return None
