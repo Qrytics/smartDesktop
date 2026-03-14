@@ -1,0 +1,71 @@
+# SmartDesktop Voice Assistant Configuration
+
+# Wake word settings
+wakeword:
+  # Wake words to listen for (Porcupine built-in options: "jarvis", "computer", "hey siri", etc.)
+  keywords:
+    - jarvis
+  # Sensitivity (0.0 to 1.0) - higher means more sensitive but more false positives
+  sensitivity: 0.5
+  # Porcupine access key (get one free at https://console.picovoice.ai/)
+  # IMPORTANT: Do NOT commit your real key to version control.
+  # Use an environment variable instead, e.g.:
+  #   access_key: "${PORCUPINE_ACCESS_KEY}"
+  # or set it via the PORCUPINE_ACCESS_KEY env var and expand it in main.py.
+  access_key: "YOUR_PORCUPINE_ACCESS_KEY"
+
+# Speech recognition settings
+speech:
+  # Whisper model size: tiny, base, small, medium, large
+  # Smaller = faster but less accurate; larger = slower but more accurate
+  model_size: base
+  # Language (null for auto-detect)
+  language: en
+  # Device to run model on: cpu, cuda, auto
+  device: auto
+  # Compute type: int8, float16, float32
+  compute_type: int8
+  # Max seconds to record after wake word
+  max_record_seconds: 10
+  # Silence threshold to stop recording (energy level)
+  silence_threshold: 500
+  # Seconds of silence before stopping recording
+  silence_duration: 1.5
+
+# Command settings
+commands:
+  # Prefix to strip from commands (the wake word itself)
+  prefix: jarvis
+  # Custom app shortcuts - add your own here
+  apps:
+    league: "C:/Riot Games/LeagueClient.exe"
+    discord: "C:/Users/%USERNAME%/AppData/Local/Discord/Update.exe --processStart Discord.exe"
+    spotify: "C:/Users/%USERNAME%/AppData/Roaming/Spotify/Spotify.exe"
+    vscode: "code"
+    chrome: "chrome"
+    firefox: "firefox"
+  # Custom project shortcuts
+  projects:
+    littleguy: "~/repos/littleguy"
+    smartdesktop: "~/repos/smartDesktop"
+  # Custom macros (sequences of commands)
+  macros:
+    start dev:
+      - open terminal
+      - run npm run dev
+    morning routine:
+      - open chrome
+      - open discord
+      - open spotify
+
+# Logging settings
+logging:
+  level: INFO
+  file: "smartdesktop.log"
+
+# General settings
+general:
+  # Show desktop notifications on command execution
+  notifications: true
+  # Text-to-speech feedback
+  tts_feedback: false

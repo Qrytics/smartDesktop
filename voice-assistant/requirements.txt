@@ -1,0 +1,23 @@
+# Speech recognition
+faster-whisper>=1.0.0
+
+# Wake word detection
+pvporcupine>=3.0.0
+
+# Audio capture
+pyaudio>=0.2.13
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# Desktop automation
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+
+# Configuration
+pyyaml>=6.0
+
+# NLP (optional, for advanced command parsing)
+# spacy>=3.7.0
+
+# Utilities
+colorama>=0.4.6
