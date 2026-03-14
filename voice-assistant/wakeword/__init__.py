@@ -97,7 +97,15 @@ class WakeWordDetector:
                     detected_keyword = self.keywords[result]
                     logger.info("Wake word detected: '%s'", detected_keyword)
                     if self.on_detected:
-                        self.on_detected(detected_keyword)
+                        try:
+                            self.on_detected(detected_keyword)
+                        except Exception as exc:
+                            logger.error(
+                                "Error in wake word callback for '%s': %s",
+                                detected_keyword,
+                                exc,
+                                exc_info=True,
+                            )
             except OSError as exc:
                 if self._running:
                     logger.error("Audio read error: %s", exc)
