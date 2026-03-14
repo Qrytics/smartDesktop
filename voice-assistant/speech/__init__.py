@@ -61,6 +61,8 @@ class SpeechRecognizer:
         self.max_record_seconds = max_record_seconds
         self.silence_threshold = silence_threshold
         self.silence_duration = silence_duration
+        self._model_size = model_size
+        self._compute_type = compute_type
 
         logger.info(
             "Loading Faster-Whisper model '%s' on device '%s' (%s)...",
@@ -68,9 +70,23 @@ class SpeechRecognizer:
             device,
             compute_type,
         )
-        self._model = WhisperModel(
-            model_size, device=device, compute_type=compute_type
-        )
+        try:
+            self._model = WhisperModel(
+                model_size, device=device, compute_type=compute_type
+            )
+        except Exception as exc:
+            if device != "cpu" and self._is_cuda_error(exc):
+                logger.warning(
+                    "Failed to load model on device '%s' (%s); falling back to CPU. Error: %s",
+                    device,
+                    compute_type,
+                    exc,
+                )
+                self._model = WhisperModel(
+                    model_size, device="cpu", compute_type=compute_type
+                )
+            else:
+                raise
         logger.info("Faster-Whisper model loaded.")
 
     # ------------------------------------------------------------------
@@ -173,12 +189,34 @@ class SpeechRecognizer:
         try:
             text_parts = [segment.text for segment in segments]
         except Exception as exc:
-            logger.error(
-                "Transcription failed during segment iteration: %s",
-                exc,
-                exc_info=True,
-            )
-            return None
+            if self._is_cuda_error(exc):
+                logger.warning(
+                    "Transcription failed due to missing CUDA library (%s). "
+                    "Reloading model on CPU and retrying...",
+                    exc,
+                )
+                self._reload_on_cpu()
+                segments, info = self._model.transcribe(
+                    audio,
+                    language=self.language,
+                    beam_size=5,
+                )
+                try:
+                    text_parts = [segment.text for segment in segments]
+                except Exception as retry_exc:
+                    logger.error(
+                        "Transcription failed on CPU fallback: %s",
+                        retry_exc,
+                        exc_info=True,
+                    )
+                    return None
+            else:
+                logger.error(
+                    "Transcription failed during segment iteration: %s",
+                    exc,
+                    exc_info=True,
+                )
+                return None
 
         logger.debug(
             "Detected language '%s' with probability %.2f",
@@ -193,6 +231,29 @@ class SpeechRecognizer:
         transcript = " ".join(text_parts).strip().lower()
         logger.info("Transcription: '%s'", transcript)
         return transcript
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _reload_on_cpu(self) -> None:
+        """Reinitialise the Whisper model on CPU (int8) as a safe fallback."""
+        logger.info(
+            "Loading Faster-Whisper model '%s' on device 'cpu' (%s)...",
+            self._model_size,
+            self._compute_type,
+        )
+        self._model = WhisperModel(
+            self._model_size, device="cpu", compute_type=self._compute_type
+        )
+        logger.info("Faster-Whisper model reloaded on CPU.")
+
+    @staticmethod
+    def _is_cuda_error(exc: Exception) -> bool:
+        """Return True when *exc* indicates a missing or broken CUDA/GPU library."""
+        msg = str(exc).lower()
+        cuda_keywords = ("cublas", "cudnn", "cuda", "cannot be loaded")
+        return any(kw in msg for kw in cuda_keywords)
 
     @staticmethod
     def _rms(data: bytes) -> float:
