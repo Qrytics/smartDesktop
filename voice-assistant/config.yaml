@@ -40,10 +40,9 @@ commands:
   apps:
     league: "C:/Riot Games/LeagueClient.exe"
     discord: "C:/Users/%USERNAME%/AppData/Local/Discord/Update.exe --processStart Discord.exe"
-    spotify: "C:/Users/%USERNAME%/AppData/Roaming/Spotify/Spotify.exe"
-    vscode: "code"
-    chrome: "chrome"
-    firefox: "firefox"
+    # Spotify: the built-in 'open spotify' command already handles common install
+    # locations automatically. Override here only if yours is non-standard, e.g.:
+    # spotify: "C:/custom/path/Spotify.exe"
   # Custom project shortcuts
   projects:
     littleguy: "~/repos/littleguy"

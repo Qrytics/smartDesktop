@@ -29,8 +29,19 @@ def _open_app(app_path: str) -> bool:
     """
     try:
         if _OS == "Windows":
-            # Use shell=True so that PATH lookups and built-in commands work.
-            subprocess.Popen(app_path, shell=True)
+            # Normalise forward slashes so Windows can find the file.
+            normalized = app_path.replace("/", "\\")
+            if os.path.isfile(normalized):
+                # Launch the executable directly (no shell layer) to avoid
+                # cmd.exe quoting / PATH issues.  Any OSError raised by Popen
+                # (e.g. if the file disappears between the isfile check and
+                # the launch) is caught by the outer except block below.
+                subprocess.Popen([normalized])
+            else:
+                # Fall back to shell=True for built-in commands such as
+                # "start spotify", "calc", "explorer", or URI schemes like
+                # "start spotify:collection".
+                subprocess.Popen(app_path, shell=True)
         elif _OS == "Darwin":
             # macOS: prefer 'open' so .app bundles are handled correctly.
             if app_path.endswith(".app") or "/" not in app_path:
@@ -107,13 +118,35 @@ def open_calculator() -> bool:
 
 
 def open_spotify() -> bool:
-    """Open Spotify."""
+    """Open Spotify, trying known install locations before falling back to the
+    'start' shell command so the app reliably launches on Windows regardless
+    of whether Spotify was installed from the web or the Microsoft Store."""
+    if _OS == "Windows":
+        candidates = [
+            os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\Spotify.exe"),
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return _open_app(candidate)
+        # Fall back: works when Spotify is registered as a URI handler or is
+        # findable on PATH.
+        return _open_app("start spotify")
     paths = {
-        "Windows": "start spotify",
         "Darwin": "Spotify",
         "Linux": "spotify",
     }
     return _open_app(paths.get(_OS, "spotify"))
+
+
+def play_spotify_liked_songs() -> bool:
+    """Open Spotify and navigate to the liked-songs collection."""
+    uris = {
+        "Windows": "start spotify:collection",
+        "Darwin": "open spotify:collection",
+        "Linux": "xdg-open spotify:collection",
+    }
+    return _open_app(uris.get(_OS, "xdg-open spotify:collection"))
 
 
 def open_discord() -> bool:
@@ -167,6 +200,10 @@ def build_app_commands(apps_config: Optional[Dict[str, str]] = None) -> Dict[str
         "open discord": open_discord,
         "open slack": open_slack,
         "open new window": open_chrome,  # shortcut: new browser window
+        "play liked songs": play_spotify_liked_songs,
+        "play my liked songs": play_spotify_liked_songs,
+        "spotify liked songs": play_spotify_liked_songs,
+        "open liked songs": play_spotify_liked_songs,
     }
 
     # Inject custom app shortcuts from config.yaml
