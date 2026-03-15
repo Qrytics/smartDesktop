@@ -32,11 +32,13 @@ def _open_app(app_path: str) -> bool:
             # Normalise forward slashes so Windows can find the file.
             normalized = app_path.replace("/", "\\")
             if os.path.isfile(normalized):
-                # Launch the executable directly (no shell layer) to avoid
-                # cmd.exe quoting / PATH issues.  Any OSError raised by Popen
-                # (e.g. if the file disappears between the isfile check and
-                # the launch) is caught by the outer except block below.
-                subprocess.Popen([normalized])
+                # Use os.startfile (ShellExecuteEx) so Windows sets the
+                # working directory to the app's own folder and resolves
+                # DLL / resource paths correctly – identical to double-clicking
+                # the file in Explorer.  Any OSError (e.g. if the file
+                # disappears between the isfile check and the launch) is
+                # caught by the outer except block below.
+                os.startfile(normalized)
             else:
                 # Fall back to shell=True for built-in commands such as
                 # "start spotify", "calc", "explorer", or URI schemes like

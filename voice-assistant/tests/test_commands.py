@@ -47,7 +47,7 @@ colorama_mod.init = MagicMock()
 # ------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from commands.apps import build_app_commands
+from commands.apps import build_app_commands, _open_app
 from commands.terminal import build_terminal_commands
 from commands.windows import build_window_commands
 from commands import CommandParser
@@ -94,6 +94,49 @@ class TestBuildAppCommands(unittest.TestCase):
         cmds = build_app_commands(None)
         self.assertIsInstance(cmds, dict)
         self.assertGreater(len(cmds), 0)
+
+
+class TestOpenApp(unittest.TestCase):
+    """Tests for the _open_app helper, focusing on Windows launch behaviour."""
+
+    @patch("commands.apps._OS", "Windows")
+    @patch("commands.apps.os.path.isfile", return_value=True)
+    @patch("commands.apps.os.startfile", create=True)
+    def test_windows_uses_startfile_for_existing_path(self, mock_startfile, mock_isfile):
+        """On Windows, _open_app must use os.startfile for a path that exists."""
+        result = _open_app(r"C:\Users\mario\AppData\Roaming\Spotify\Spotify.exe")
+        mock_startfile.assert_called_once_with(
+            r"C:\Users\mario\AppData\Roaming\Spotify\Spotify.exe"
+        )
+        self.assertTrue(result)
+
+    @patch("commands.apps._OS", "Windows")
+    @patch("commands.apps.os.path.isfile", return_value=True)
+    @patch("commands.apps.os.startfile", create=True)
+    def test_windows_normalises_forward_slashes(self, mock_startfile, mock_isfile):
+        """Forward slashes in the path should be converted to backslashes."""
+        result = _open_app("C:/Users/mario/AppData/Roaming/Spotify/Spotify.exe")
+        mock_startfile.assert_called_once_with(
+            r"C:\Users\mario\AppData\Roaming\Spotify\Spotify.exe"
+        )
+        self.assertTrue(result)
+
+    @patch("commands.apps._OS", "Windows")
+    @patch("commands.apps.os.path.isfile", return_value=False)
+    @patch("commands.apps.subprocess.Popen")
+    def test_windows_shell_fallback_when_path_not_found(self, mock_popen, mock_isfile):
+        """When the path doesn't exist, the shell=True fallback should be used."""
+        result = _open_app("start spotify")
+        mock_popen.assert_called_once_with("start spotify", shell=True)
+        self.assertTrue(result)
+
+    @patch("commands.apps._OS", "Windows")
+    @patch("commands.apps.os.path.isfile", return_value=True)
+    @patch("commands.apps.os.startfile", create=True, side_effect=OSError("file not found"))
+    def test_windows_startfile_oserror_returns_false(self, mock_startfile, mock_isfile):
+        """An OSError from os.startfile should be caught and return False."""
+        result = _open_app(r"C:\Missing\App.exe")
+        self.assertFalse(result)
 
 
 class TestBuildWindowCommands(unittest.TestCase):
