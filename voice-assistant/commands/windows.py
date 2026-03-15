@@ -6,13 +6,15 @@ Handles voice commands for managing application windows:
   - minimise / maximise / restore
   - close
   - snap left / snap right (Windows only)
-  - swap monitors / move window to next screen (Windows only via DisplaySwitch/NirCmd)
+  - swap monitors / move all windows to next screen in rotation (Windows only)
 """
 
+import ctypes
+import ctypes.wintypes
 import logging
 import platform
 import subprocess
-from typing import Dict
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,50 @@ _OS = platform.system()
 # ---------------------------------------------------------------------------
 # Low-level helpers
 # ---------------------------------------------------------------------------
+
+def _get_monitors() -> List[Dict[str, int]]:
+    """
+    Return a list of monitor rectangles sorted left-to-right, top-to-bottom.
+
+    Each entry is a dict with keys: ``left``, ``top``, ``right``, ``bottom``.
+    Uses the Windows ``EnumDisplayMonitors`` API via ``ctypes``; returns an
+    empty list on non-Windows platforms.
+    """
+    if _OS != "Windows":
+        return []
+
+    monitors: List[Dict[str, int]] = []
+
+    MonitorEnumProc = ctypes.WINFUNCTYPE(
+        ctypes.c_bool,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+        ctypes.POINTER(ctypes.wintypes.RECT),
+        ctypes.c_ssize_t,
+    )
+
+    def _callback(_hMonitor, _hdcMonitor, lprc, _dwData):
+        rect = lprc.contents
+        monitors.append(
+            {
+                "left": rect.left,
+                "top": rect.top,
+                "right": rect.right,
+                "bottom": rect.bottom,
+            }
+        )
+        return True
+
+    try:
+        ctypes.windll.user32.EnumDisplayMonitors(
+            None, None, MonitorEnumProc(_callback), 0
+        )
+    except OSError as exc:
+        logger.error("EnumDisplayMonitors failed: %s", exc)
+
+    monitors.sort(key=lambda m: (m["left"], m["top"]))
+    return monitors
+
 
 def _get_window(title_fragment: str):
     """
@@ -141,30 +187,70 @@ def snap_right() -> bool:
 
 def swap_monitors() -> bool:
     """
-    Move the primary display to the secondary monitor and vice-versa.
+    Move all visible windows between monitors in a sequential rotation.
 
-    Uses the Windows built-in ``DisplaySwitch.exe`` command:
-      /internal   — only internal display
-      /external   — only external display
-      /clone      — clone both
-      /extend     — extend to both
+    With 2 monitors every window on monitor A moves to monitor B and vice-versa.
+    With N monitors the windows rotate: monitor[0]→monitor[1]→…→monitor[N-1]→monitor[0].
 
-    Calling ``/external`` effectively swaps the primary display to the
-    external monitor. Calling ``/internal`` reverts to the built-in screen.
-
-    For a true "swap" (toggle), we detect the current display count and
-    toggle between /extend and /clone, or simply call /external as a shortcut.
+    Each window is placed at the same *relative* position within its destination
+    monitor so that the layout is preserved.  Minimised windows are left untouched.
     """
     if _OS != "Windows":
         logger.warning("swap_monitors is only supported on Windows.")
         return False
-    try:
-        subprocess.Popen(["DisplaySwitch.exe", "/external"])
-        logger.info("Display switched to external monitor.")
-        return True
-    except OSError as exc:
-        logger.error("Failed to run DisplaySwitch: %s", exc)
+
+    monitors = _get_monitors()
+    if len(monitors) < 2:
+        logger.warning("swap_monitors requires at least 2 monitors; found %d.", len(monitors))
         return False
+
+    try:
+        import pygetwindow as gw
+    except Exception as exc:
+        logger.error("pygetwindow unavailable: %s", exc)
+        return False
+
+    all_windows = gw.getAllWindows()
+    n = len(monitors)
+
+    # Group windows by the monitor their centre point falls on.
+    windows_by_monitor: List[list] = [[] for _ in monitors]
+    for win in all_windows:
+        if not win.title:
+            continue
+        try:
+            if win.isMinimized:
+                continue
+        except Exception:
+            pass
+        if win.width <= 0 or win.height <= 0:
+            continue
+
+        cx = win.left + win.width // 2
+        cy = win.top + win.height // 2
+        for idx, mon in enumerate(monitors):
+            if mon["left"] <= cx < mon["right"] and mon["top"] <= cy < mon["bottom"]:
+                windows_by_monitor[idx].append(win)
+                break
+
+    # Rotate: windows on monitor[i] move to monitor[(i + 1) % n].
+    moved = 0
+    for i, windows in enumerate(windows_by_monitor):
+        src = monitors[i]
+        dst = monitors[(i + 1) % n]
+        for win in windows:
+            rel_x = win.left - src["left"]
+            rel_y = win.top - src["top"]
+            new_x = dst["left"] + rel_x
+            new_y = dst["top"] + rel_y
+            try:
+                win.moveTo(new_x, new_y)
+                moved += 1
+            except Exception as exc:
+                logger.warning("Could not move window '%s': %s", win.title, exc)
+
+    logger.info("Rotated %d window(s) across %d monitor(s).", moved, n)
+    return True
 
 
 def extend_displays() -> bool:
