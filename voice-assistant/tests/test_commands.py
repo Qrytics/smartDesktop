@@ -65,6 +65,19 @@ class TestBuildAppCommands(unittest.TestCase):
                        "open vscode", "open spotify", "open discord"]:
             self.assertIn(phrase, cmds, f"Missing built-in command: {phrase}")
 
+    def test_liked_songs_commands_present(self):
+        cmds = build_app_commands()
+        for phrase in ["play liked songs", "play my liked songs",
+                       "spotify liked songs", "open liked songs"]:
+            self.assertIn(phrase, cmds, f"Missing liked-songs command: {phrase}")
+
+    def test_liked_songs_commands_all_callable(self):
+        cmds = build_app_commands()
+        for phrase in ["play liked songs", "play my liked songs",
+                       "spotify liked songs", "open liked songs"]:
+            self.assertTrue(callable(cmds[phrase]),
+                            f"Handler for '{phrase}' is not callable")
+
     def test_custom_app_injected(self):
         custom = {"league": "C:/Riot Games/LeagueClient.exe"}
         cmds = build_app_commands(custom)
@@ -176,6 +189,17 @@ class TestCommandParser(unittest.TestCase):
         result = parser.execute("jarvis open chrome")
         self.assertTrue(result)
         self.assertEqual(len(called), 1)
+
+    def test_liked_songs_command_matched(self):
+        """'play liked songs' and variants should dispatch to a handler."""
+        parser = CommandParser(self._make_config())
+        for phrase in ["play liked songs", "play my liked songs",
+                       "spotify liked songs", "open liked songs"]:
+            called = []
+            parser._commands[phrase] = lambda: called.append(True) or True
+            result = parser.execute(f"jarvis {phrase}")
+            self.assertTrue(result, f"Command '{phrase}' was not matched/executed")
+            self.assertEqual(len(called), 1, f"Handler for '{phrase}' not called")
 
     def test_custom_project_command(self):
         parser = CommandParser(self._make_config(extra_projects={"littleguy": "~/repos/littleguy"}))
